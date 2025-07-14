@@ -14,7 +14,7 @@ const game = new Game(io);
 
 io.on('connection', (socket) => {
     console.log(`[Connect] ${socket.id}`);
-    socket.on('joinGame', (data) => game.addPlayer(socket, data));
+    socket.on('joinGame', (username) => game.addPlayer(socket, username));
     socket.on('disconnect', () => game.removePlayer(socket));
     socket.on('playerInput', (input) => game.handlePlayerInput(socket.id, input));
 });
