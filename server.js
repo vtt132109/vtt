@@ -13,19 +13,22 @@ app.use(express.static('public'));
 const game = new Game(io);
 
 io.on('connection', (socket) => {
-    console.log(`[Connect] ${socket.id}`);
     socket.on('joinGame', (username) => game.addPlayer(socket, username));
     socket.on('disconnect', () => game.removePlayer(socket));
-    socket.on('playerInput', (input) => game.handlePlayerInput(socket.id, input));
-    socket.on('throwGrenade', () => game.handleThrowGrenade(socket.id));
+    // THAY ĐỔI: Nhận input đã được nén
+    socket.on('i', (inputArray) => game.handlePlayerInput(socket.id, inputArray));
 });
 
+// Tách biệt vòng lặp logic và vòng lặp gửi gói tin
 setInterval(() => {
     game.update();
+}, 1000 / 60); // Logic chạy ở 60Hz
+
+setInterval(() => {
     if (Object.keys(game.players).length > 0) {
-        io.emit('gameState', game.getState());
+        io.emit('s', game.getState()); // 's' for state
     }
-}, 1000 / 60);
+}, 1000 / 30); // Gửi state ở 30Hz để tiết kiệm băng thông
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
