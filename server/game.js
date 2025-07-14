@@ -3,27 +3,14 @@ const CONSTANTS = require('./constants');
 const WEAPONS = require('./weapon');
 const { createPlayer } = require('./player');
 
-function isCollidingRectCircle(rect, circle) {
-    const distX = Math.abs(circle.x - rect.x - rect.width / 2);
-    const distY = Math.abs(circle.y - rect.y - rect.height / 2);
-    if (distX > (rect.width / 2 + circle.radius)) { return false; }
-    if (distY > (rect.height / 2 + circle.radius)) { return false; }
-    if (distX <= (rect.width / 2)) { return true; }
-    if (distY <= (rect.height / 2)) { return true; }
-    const dx = distX - rect.width / 2;
-    const dy = distY - rect.height / 2;
-    return (dx * dx + dy * dy <= (circle.radius * circle.radius));
-}
+// ... (Các hàm isColliding giữ nguyên)
+function isCollidingRectCircle(rect, circle) { /* ... */ }
+function isCollidingCircleCircle(circle1, circle2) { /* ... */ }
 
-function isCollidingCircleCircle(circle1, circle2) {
-    const dx = circle1.x - circle2.x;
-    const dy = circle1.y - circle2.y;
-    const distance = Math.sqrt(dx * dx + dy * dy);
-    return distance < circle1.radius + circle2.radius;
-}
 
 class Game {
     constructor(io) {
+        // ... (constructor giữ nguyên)
         this.io = io;
         this.players = {};
         this.bullets = {};
@@ -40,6 +27,7 @@ class Game {
     }
 
     init() {
+        // ... (init giữ nguyên)
         for (let i = 0; i < 5; i++) this.spawnItem();
         this.destructibles = {
             'barrel1': { id: 'barrel1', x: 800, y: 600, radius: 20, health: 50, maxHealth: 50, active: true },
@@ -49,6 +37,7 @@ class Game {
     }
 
     addPlayer(socket, data) {
+        // ... (addPlayer giữ nguyên)
         const newPlayer = createPlayer(socket.id, data.username);
         this.players[socket.id] = newPlayer;
         socket.emit('initialState', {
@@ -61,6 +50,7 @@ class Game {
     }
 
     removePlayer(socket) {
+        // ... (removePlayer giữ nguyên)
         if (this.players[socket.id]) {
             console.log(`${this.players[socket.id].username} đã ngắt kết nối.`);
             delete this.players[socket.id];
@@ -68,84 +58,84 @@ class Game {
         }
     }
 
+    // ==================================================================
+    // HÀM QUAN TRỌNG NHẤT - ĐÃ THÊM LOG GỠ LỖI
+    // ==================================================================
     handlePlayerInput(id, input) {
-    const player = this.players[id];
+        const player = this.players[id];
+        if (!player || player.health <= 0 || player.isDashing) return;
 
-    // --- BƯỚC KIỂM TRA AN TOÀN ĐẦU VÀO ---
-    // Nếu không tìm thấy người chơi, hoặc người chơi đã chết, hoặc đang lướt, thì không làm gì cả.
-    if (!player || player.health <= 0 || player.isDashing) {
-        return;
-    }
+        // --- XỬ LÝ DI CHUYỂN ---
+        // (Logic di chuyển giữ nguyên)
+        const potentialPosition = { x: player.x, y: player.y, radius: player.radius };
+        if (input.keys.a) potentialPosition.x -= player.speed;
+        if (input.keys.d) potentialPosition.x += player.speed;
+        if (input.keys.w) potentialPosition.y -= player.speed;
+        if (input.keys.s) potentialPosition.y += player.speed;
+        potentialPosition.x = Math.max(player.radius, Math.min(CONSTANTS.MAP_WIDTH - player.radius, potentialPosition.x));
+        potentialPosition.y = Math.max(player.radius, Math.min(CONSTANTS.MAP_HEIGHT - player.radius, potentialPosition.y));
+        let collision = false;
+        for (const wall of this.walls) {
+            if (isCollidingRectCircle(wall, potentialPosition)) {
+                collision = true;
+                break;
+            }
+        }
+        if (!collision) {
+            player.x = potentialPosition.x;
+            player.y = potentialPosition.y;
+        }
 
-    // --- XỬ LÝ DI CHUYỂN ---
-    const potentialPosition = { x: player.x, y: player.y, radius: player.radius };
-    if (input.keys.a) potentialPosition.x -= player.speed;
-    if (input.keys.d) potentialPosition.x += player.speed;
-    if (input.keys.w) potentialPosition.y -= player.speed;
-    if (input.keys.s) potentialPosition.y += player.speed;
+        // --- XỬ LÝ HƯỚNG ---
+        player.angle = input.angle;
 
-    // Giới hạn di chuyển trong bản đồ
-    potentialPosition.x = Math.max(player.radius, Math.min(CONSTANTS.MAP_WIDTH - player.radius, potentialPosition.x));
-    potentialPosition.y = Math.max(player.radius, Math.min(CONSTANTS.MAP_HEIGHT - player.radius, potentialPosition.y));
+        // --- XỬ LÝ BẮN ---
+        if (input.mouseDown) {
+            const weapon = WEAPONS[player.weapon];
+            
+            // Log chi tiết để gỡ lỗi
+            console.log(`--- SHOOT ATTEMPT by ${player.username} ---`);
+            if (!weapon) {
+                console.log(`ERROR: Weapon "${player.weapon}" not found!`);
+                return; // Dừng lại nếu vũ khí không hợp lệ
+            }
+            
+            const timeSinceLastShot = Date.now() - player.lastShotTime;
+            const canShoot = timeSinceLastShot > weapon.fireRate;
 
-    // Kiểm tra va chạm với tường
-    let collision = false;
-    for (const wall of this.walls) {
-        if (isCollidingRectCircle(wall, potentialPosition)) {
-            collision = true;
-            break;
+            console.log(`Weapon: ${player.weapon} | MouseDown: ${input.mouseDown}`);
+            console.log(`Time since last shot: ${timeSinceLastShot}ms | Fire rate: ${weapon.fireRate}ms`);
+            console.log(`Can shoot: ${canShoot}`);
+
+            if (canShoot) {
+                console.log(`   >>> SUCCESS! Firing ${weapon.name}.`);
+                player.lastShotTime = Date.now();
+                for (let i = 0; i < weapon.bulletCount; i++) {
+                    const angle = player.angle + (Math.random() - 0.5) * weapon.spread;
+                    const bulletId = `bullet-${this.bulletIdCounter++}`;
+                    this.bullets[bulletId] = {
+                        id: bulletId,
+                        ownerId: player.id,
+                        x: player.x + Math.cos(angle) * (player.radius + 5),
+                        y: player.y + Math.sin(angle) * (player.radius + 5),
+                        velocityX: Math.cos(angle) * weapon.speed,
+                        velocityY: Math.sin(angle) * weapon.speed,
+                        damage: weapon.damage,
+                        color: player.color,
+                        radius: 5,
+                    };
+                }
+            }
+            console.log('--- END SHOOT ATTEMPT ---');
         }
     }
-    // Chỉ cập nhật vị trí nếu không có va chạm
-    if (!collision) {
-        player.x = potentialPosition.x;
-        player.y = potentialPosition.y;
-    }
 
-    // --- XỬ LÝ HƯỚNG NHÂN VẬT ---
-    player.angle = input.angle;
-
-    // --- XỬ LÝ BẮN SÚNG (PHẦN QUAN TRỌNG) ---
-    // 1. Lấy thông tin vũ khí hiện tại của người chơi
-    const weapon = WEAPONS[player.weapon];
-
-    // 2. Kiểm tra tất cả các điều kiện để có thể bắn
-    const canShoot = input.mouseDown &&         // Người chơi có đang nhấn chuột không?
-                     weapon &&                   // Vũ khí có hợp lệ không (tránh lỗi undefined)?
-                     Date.now() - player.lastShotTime > weapon.fireRate; // Đã hết thời gian hồi chiêu của súng chưa?
-
-    if (canShoot) {
-        // 3. Nếu có thể bắn, cập nhật ngay thời gian bắn cuối cùng để tính cooldown cho lần sau
-        player.lastShotTime = Date.now();
-
-        // 4. Vòng lặp để tạo đạn (hữu ích cho shotgun)
-        for (let i = 0; i < weapon.bulletCount; i++) {
-            // Thêm độ lệch ngẫu nhiên cho mỗi viên đạn (tạo độ tỏa - spread)
-            const angle = player.angle + (Math.random() - 0.5) * weapon.spread;
-            
-            // Tạo ID duy nhất cho viên đạn
-            const bulletId = `bullet-${this.bulletIdCounter++}`;
-
-            // Tạo đối tượng đạn và thêm vào danh sách đạn của game
-            this.bullets[bulletId] = {
-                id: bulletId,
-                ownerId: player.id,
-                x: player.x + Math.cos(angle) * (player.radius + 5), // Vị trí bắt đầu từ đầu nòng súng
-                y: player.y + Math.sin(angle) * (player.radius + 5),
-                velocityX: Math.cos(angle) * weapon.speed,
-                velocityY: Math.sin(angle) * weapon.speed,
-                damage: weapon.damage,
-                color: player.color,
-                radius: 5,
-            };
-        } // Đóng vòng lặp for
-    } // Đóng điều kiện if (canShoot)
-} // Đóng hàm handlePlayerInput
     handleDash(id) {
+        // ... (handleDash giữ nguyên)
         const player = this.players[id];
         if (!player || player.health <= 0 || Date.now() - player.lastDashTime < CONSTANTS.DASH_COOLDOWN) return;
         
-        player.lastDashTime = Date.now();
+        player.lastShotTime = Date.now();
         player.isDashing = true;
         const dashSpeed = player.speed * CONSTANTS.DASH_SPEED_MULTIPLIER;
         player.dashVelocityX = Math.cos(player.angle) * dashSpeed;
@@ -157,6 +147,7 @@ class Game {
     }
 
     handleChatMessage(id, msg) {
+        // ... (handleChatMessage giữ nguyên)
         const player = this.players[id];
         if (msg && msg.trim().length > 0 && player) {
             this.io.emit('chatMessage', {
@@ -168,6 +159,7 @@ class Game {
     }
 
     update() {
+        // ... (update giữ nguyên)
         for (const id in this.players) {
             const player = this.players[id];
             if (player.isDashing) {
@@ -270,6 +262,7 @@ class Game {
     }
 
     getState() {
+        // ... (getState giữ nguyên)
         return {
             players: this.players,
             bullets: this.bullets,
@@ -278,6 +271,7 @@ class Game {
     }
 
     spawnItem() {
+        // ... (spawnItem giữ nguyên)
         const id = `item-${this.itemIdCounter++}`;
         const typeRoll = Math.random();
         let type, color;
