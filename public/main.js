@@ -1,12 +1,12 @@
 // public/main.js
 import { Game } from './client/game.js';
 
-const startMenu = document.getElementById('start-menu');
-const usernameInput = document.getElementById('username-input');
-const playButton = document.getElementById('play-button');
-const canvas = document.getElementById('gameCanvas');
-
 function initialize() {
+    const startMenu = document.getElementById('start-menu');
+    const usernameInput = document.getElementById('username-input');
+    const playButton = document.getElementById('play-button');
+    const canvas = document.getElementById('gameCanvas');
+
     if (!startMenu || !usernameInput || !playButton || !canvas) {
         console.error("Initialization failed: An essential HTML element is missing.");
         return;
