@@ -5,7 +5,8 @@ export class Input {
         this.state = {
             keys: { w: false, a: false, s: false, d: false },
             isShooting: false,
-            angle: 0
+            angle: 0,
+            mousePos: { x: 0, y: 0 },
         };
     }
 
@@ -19,6 +20,9 @@ export class Input {
         this.canvas.addEventListener('mousedown', (e) => {
             if (e.button === 0) this.state.isShooting = true;
         });
+        this.canvas.addEventListener('mouseup', (e) => {
+            if (e.button === 0) this.state.isShooting = false;
+        });
         this.canvas.addEventListener('mousemove', (e) => {
             const rect = this.canvas.getBoundingClientRect();
             this.state.mousePos = {
@@ -29,9 +33,7 @@ export class Input {
     }
 
     getState() {
-        const currentState = { ...this.state };
-        // Reset trạng thái bắn sau khi lấy, để nó chỉ bắn một lần
-        this.state.isShooting = false;
-        return currentState;
+        // Đối với bắn liên tục, chúng ta không reset isShooting ở đây
+        return this.state;
     }
 }
