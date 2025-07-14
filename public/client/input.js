@@ -46,6 +46,7 @@ export class Input {
     }
 
     handleMouseDown(e) {
+        console.log("Mouse Down Event Fired!");
         if (e.button === 0) {
             this.state.mouse.down = true;
             this.sounds.shoot.currentTime = 0;
@@ -54,6 +55,7 @@ export class Input {
     }
 
     handleMouseUp(e) {
+         console.log("Mouse Up Event Fired!");
         if (e.button === 0) this.state.mouse.down = false;
     }
 
