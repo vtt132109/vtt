@@ -69,53 +69,78 @@ class Game {
     }
 
     handlePlayerInput(id, input) {
-        const player = this.players[id];
-        if (!player || player.health <= 0 || player.isDashing) return;
+    const player = this.players[id];
 
-        const potentialPosition = { x: player.x, y: player.y, radius: player.radius };
-        if (input.keys.a) potentialPosition.x -= player.speed;
-        if (input.keys.d) potentialPosition.x += player.speed;
-        if (input.keys.w) potentialPosition.y -= player.speed;
-        if (input.keys.s) potentialPosition.y += player.speed;
-
-        potentialPosition.x = Math.max(player.radius, Math.min(CONSTANTS.MAP_WIDTH - player.radius, potentialPosition.x));
-        potentialPosition.y = Math.max(player.radius, Math.min(CONSTANTS.MAP_HEIGHT - player.radius, potentialPosition.y));
-
-        let collision = false;
-        for (const wall of this.walls) {
-            if (isCollidingRectCircle(wall, potentialPosition)) {
-                collision = true;
-                break;
-            }
-        }
-        if (!collision) {
-            player.x = potentialPosition.x;
-            player.y = potentialPosition.y;
-        }
-
-        player.angle = input.angle;
-
-        const weapon = WEAPONS[player.weapon];
-        if (input.mouseDown && weapon && Date.now() - player.lastShotTime > weapon.fireRate) {
-            player.lastShotTime = Date.now();
-            for (let i = 0; i < weapon.bulletCount; i++) {
-                const angle = player.angle + (Math.random() - 0.5) * weapon.spread;
-                const bulletId = `bullet-${this.bulletIdCounter++}`;
-                this.bullets[bulletId] = {
-                    id: bulletId,
-                    ownerId: player.id,
-                    x: player.x + Math.cos(angle) * (player.radius + 5),
-                    y: player.y + Math.sin(angle) * (player.radius + 5),
-                    velocityX: Math.cos(angle) * weapon.speed,
-                    velocityY: Math.sin(angle) * weapon.speed,
-                    damage: weapon.damage,
-                    color: player.color,
-                    radius: 5,
-                };
-            }
-        }
+    // --- BƯỚC KIỂM TRA AN TOÀN ĐẦU VÀO ---
+    // Nếu không tìm thấy người chơi, hoặc người chơi đã chết, hoặc đang lướt, thì không làm gì cả.
+    if (!player || player.health <= 0 || player.isDashing) {
+        return;
     }
 
+    // --- XỬ LÝ DI CHUYỂN ---
+    const potentialPosition = { x: player.x, y: player.y, radius: player.radius };
+    if (input.keys.a) potentialPosition.x -= player.speed;
+    if (input.keys.d) potentialPosition.x += player.speed;
+    if (input.keys.w) potentialPosition.y -= player.speed;
+    if (input.keys.s) potentialPosition.y += player.speed;
+
+    // Giới hạn di chuyển trong bản đồ
+    potentialPosition.x = Math.max(player.radius, Math.min(CONSTANTS.MAP_WIDTH - player.radius, potentialPosition.x));
+    potentialPosition.y = Math.max(player.radius, Math.min(CONSTANTS.MAP_HEIGHT - player.radius, potentialPosition.y));
+
+    // Kiểm tra va chạm với tường
+    let collision = false;
+    for (const wall of this.walls) {
+        if (isCollidingRectCircle(wall, potentialPosition)) {
+            collision = true;
+            break;
+        }
+    }
+    // Chỉ cập nhật vị trí nếu không có va chạm
+    if (!collision) {
+        player.x = potentialPosition.x;
+        player.y = potentialPosition.y;
+    }
+
+    // --- XỬ LÝ HƯỚNG NHÂN VẬT ---
+    player.angle = input.angle;
+
+    // --- XỬ LÝ BẮN SÚNG (PHẦN QUAN TRỌNG) ---
+    // 1. Lấy thông tin vũ khí hiện tại của người chơi
+    const weapon = WEAPONS[player.weapon];
+
+    // 2. Kiểm tra tất cả các điều kiện để có thể bắn
+    const canShoot = input.mouseDown &&         // Người chơi có đang nhấn chuột không?
+                     weapon &&                   // Vũ khí có hợp lệ không (tránh lỗi undefined)?
+                     Date.now() - player.lastShotTime > weapon.fireRate; // Đã hết thời gian hồi chiêu của súng chưa?
+
+    if (canShoot) {
+        // 3. Nếu có thể bắn, cập nhật ngay thời gian bắn cuối cùng để tính cooldown cho lần sau
+        player.lastShotTime = Date.now();
+
+        // 4. Vòng lặp để tạo đạn (hữu ích cho shotgun)
+        for (let i = 0; i < weapon.bulletCount; i++) {
+            // Thêm độ lệch ngẫu nhiên cho mỗi viên đạn (tạo độ tỏa - spread)
+            const angle = player.angle + (Math.random() - 0.5) * weapon.spread;
+            
+            // Tạo ID duy nhất cho viên đạn
+            const bulletId = `bullet-${this.bulletIdCounter++}`;
+
+            // Tạo đối tượng đạn và thêm vào danh sách đạn của game
+            this.bullets[bulletId] = {
+                id: bulletId,
+                ownerId: player.id,
+                x: player.x + Math.cos(angle) * (player.radius + 5), // Vị trí bắt đầu từ đầu nòng súng
+                y: player.y + Math.sin(angle) * (player.radius + 5),
+                velocityX: Math.cos(angle) * weapon.speed,
+                velocityY: Math.sin(angle) * weapon.speed,
+                damage: weapon.damage,
+                color: player.color,
+                radius: 5,
+            };
+        } // Đóng vòng lặp for
+    } // Đóng điều kiện if (canShoot)
+} // Đóng hàm handlePlayerInput
     handleDash(id) {
         const player = this.players[id];
         if (!player || player.health <= 0 || Date.now() - player.lastDashTime < CONSTANTS.DASH_COOLDOWN) return;
