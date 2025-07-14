@@ -33,7 +33,6 @@ export class Input {
     }
 
     getState() {
-        // Đối với bắn liên tục, chúng ta không reset isShooting ở đây
         return this.state;
     }
 }
