@@ -5,12 +5,12 @@ module.exports = {
     PLAYER_RADIUS: 15,
     PLAYER_SPEED: 4,
     PLAYER_HEALTH: 100,
-    HEALTH_PACK_AMOUNT: 50,
-    HOMING_DURATION: 5000,
-    // MỚI
-    GRENADE_FUSE_TIME: 3000, // 3 giây nổ
+    PLAYER_RESPAWN_TIME: 3000, // 3 giây
+    BULLET_MAX_RICOCHETS: 1, // Đạn nảy 1 lần
+    GRENADE_SPEED: 8,
+    GRENADE_FUSE_TIME: 2500, // 2.5 giây
     GRENADE_RADIUS: 80,
     GRENADE_DAMAGE: 60,
-    GRENADE_COOLDOWN: 8000, // 8 giây hồi
-    BULLET_MAX_BOUNCES: 2, // Số lần nảy tối đa
+    GRENADE_COOLDOWN: 8000, // 8 giây
+    JUMP_PAD_POWER: 30,
 };
