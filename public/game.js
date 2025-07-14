@@ -1,10 +1,12 @@
 // public/game.js
 
+const startMenu = document.getElementById('start-menu');
+const usernameInput = document.getElementById('username-input');
+const playButton = document.getElementById('play-button');
 const canvas = document.getElementById('gameCanvas');
 const context = canvas.getContext('2d');
 
 // THAY ĐỔI DÒNG NÀY KHI DEPLOY
-// Ví dụ: const socket = io('https://your-game-name.onrender.com');
 const socket = io(); 
 
 // --- TRẠNG THÁI PHÍA CLIENT ---
@@ -13,8 +15,22 @@ let walls = [];
 let items = {};
 let bullets = {};
 let selfId = null;
-const keys = { w: false, a: false, s: false, d: false };
-const mouse = { x: 0, y: 0 };
+const input = {
+  keys: { w: false, a: false, s: false, d: false },
+  mouse: { x: 0, y: 0, down: false },
+  angle: 0
+};
+
+// --- XỬ LÝ MÀN HÌNH BẮT ĐẦU ---
+playButton.addEventListener('click', () => {
+  const username = usernameInput.value.trim();
+  if (username) {
+    socket.emit('joinGame', { username });
+    startMenu.style.display = 'none';
+    canvas.style.display = 'block';
+    canvas.focus(); // Để nhận input từ bàn phím
+  }
+});
 
 // --- LẮNG NGHE SỰ KIỆN TỪ SERVER ---
 socket.on('initialState', (state) => {
@@ -22,52 +38,31 @@ socket.on('initialState', (state) => {
   walls = state.walls;
   items = state.items;
   selfId = socket.id;
+  requestAnimationFrame(gameLoop); // Bắt đầu game loop
 });
 
-socket.on('newPlayer', (player) => {
-  players[player.id] = player;
-});
-
-socket.on('playerDisconnected', (id) => {
-  delete players[id];
-});
-
+socket.on('newPlayer', (player) => { players[player.id] = player; });
+socket.on('playerDisconnected', (id) => { delete players[id]; });
 socket.on('gameState', (state) => {
   players = state.players;
   bullets = state.bullets;
 });
-
-socket.on('itemPickedUp', (itemId) => {
-  if (items[itemId]) items[itemId].active = false;
-});
-
-socket.on('itemRespawned', (itemId) => {
-  if (items[itemId]) items[itemId].active = true;
-});
+socket.on('itemPickedUp', (itemId) => { if (items[itemId]) items[itemId].active = false; });
+socket.on('newItem', (item) => { if (item) items[item.id] = item; });
 
 // --- XỬ LÝ INPUT ---
-window.addEventListener('keydown', (e) => {
-  if (keys.hasOwnProperty(e.key)) keys[e.key] = true;
-});
-window.addEventListener('keyup', (e) => {
-  if (keys.hasOwnProperty(e.key)) keys[e.key] = false;
-});
-
+window.addEventListener('keydown', (e) => { if (input.keys.hasOwnProperty(e.key)) input.keys[e.key] = true; });
+window.addEventListener('keyup', (e) => { if (input.keys.hasOwnProperty(e.key)) input.keys[e.key] = false; });
 canvas.addEventListener('mousemove', (e) => {
   const rect = canvas.getBoundingClientRect();
-  mouse.x = e.clientX - rect.left;
-  mouse.y = e.clientY - rect.top;
+  input.mouse.x = e.clientX - rect.left;
+  input.mouse.y = e.clientY - rect.top;
 });
-
-canvas.addEventListener('mousedown', (e) => {
-  if (e.button === 0) { // Chuột trái
-    socket.emit('shoot');
-  }
-});
+canvas.addEventListener('mousedown', (e) => { if (e.button === 0) input.mouse.down = true; });
+canvas.addEventListener('mouseup', (e) => { if (e.button === 0) input.mouse.down = false; });
 
 // --- HÀM VẼ ---
 function draw() {
-  // Xóa màn hình
   context.clearRect(0, 0, canvas.width, canvas.height);
 
   // Vẽ tường
@@ -80,41 +75,52 @@ function draw() {
   for (const id in items) {
     const item = items[id];
     if (item.active) {
-      context.fillStyle = 'lime';
-      context.fillRect(item.x, item.y, item.width, item.height);
+      context.fillStyle = item.color;
+      context.beginPath();
+      context.arc(item.x, item.y, item.radius, 0, Math.PI * 2);
+      context.fill();
       context.strokeStyle = 'white';
-      context.strokeRect(item.x, item.y, item.width, item.height);
+      context.lineWidth = 2;
+      context.stroke();
     }
   }
 
-  // Vẽ người chơi và súng
+  // Vẽ người chơi
   for (const id in players) {
     const player = players[id];
-    const playerCenterX = player.x + player.width / 2;
-    const playerCenterY = player.y + player.height / 2;
+    if (player.health <= 0) continue; // Không vẽ người chơi đã chết
 
+    const playerCenterX = player.x;
+    const playerCenterY = player.y;
+
+    // Vẽ súng
     context.save();
     context.translate(playerCenterX, playerCenterY);
     context.rotate(player.angle);
-
-    // Vẽ súng (hình chữ nhật)
     context.fillStyle = '#999';
-    context.fillRect(player.width / 2 - 5, -4, 20, 8);
-
+    context.fillRect(player.radius - 5, -4, 20, 8);
     context.restore();
 
     // Vẽ thân người chơi
+    context.beginPath();
+    context.arc(playerCenterX, playerCenterY, player.radius, 0, Math.PI * 2);
     context.fillStyle = player.color;
-    context.fillRect(player.x, player.y, player.width, player.height);
+    context.fill();
+    context.strokeStyle = 'white';
+    context.lineWidth = 2;
+    context.stroke();
+
+    // Vẽ tên và thanh máu
+    context.fillStyle = 'white';
+    context.font = '12px sans-serif';
+    context.textAlign = 'center';
+    context.fillText(player.username, player.x, player.y - player.radius - 15);
     
-    // Vẽ thanh máu
-    if (player.health > 0) {
-      const healthPercentage = player.health / 100;
-      context.fillStyle = 'red';
-      context.fillRect(player.x, player.y - 15, player.width, 8);
-      context.fillStyle = 'green';
-      context.fillRect(player.x, player.y - 15, player.width * healthPercentage, 8);
-    }
+    const healthPercentage = player.health / 100;
+    context.fillStyle = 'red';
+    context.fillRect(player.x - player.radius, player.y - player.radius - 10, player.radius * 2, 8);
+    context.fillStyle = 'green';
+    context.fillRect(player.x - player.radius, player.y - player.radius - 10, player.radius * 2 * healthPercentage, 8);
   }
 
   // Vẽ đạn
@@ -122,29 +128,37 @@ function draw() {
     const bullet = bullets[id];
     context.fillStyle = bullet.color;
     context.beginPath();
-    context.arc(bullet.x, bullet.y, 5, 0, Math.PI * 2);
+    context.arc(bullet.x, bullet.y, bullet.radius, 0, Math.PI * 2);
     context.fill();
   }
 
-  // Vẽ bảng điểm
-  drawLeaderboard();
+  drawUI();
 }
 
-function drawLeaderboard() {
+function drawUI() {
+  const self = players[selfId];
+  if (!self) return;
+
+  // Vẽ thông tin vũ khí
+  context.fillStyle = 'white';
+  context.font = '20px sans-serif';
+  context.textAlign = 'left';
+  context.fillText(`Weapon: ${self.weapon}`, 10, 30);
+
+  // Vẽ bảng điểm
   const sortedPlayers = Object.values(players).sort((a, b) => b.score - a.score);
   context.fillStyle = 'rgba(0, 0, 0, 0.5)';
-  context.fillRect(canvas.width - 160, 10, 150, 20 + sortedPlayers.length * 20);
+  context.fillRect(canvas.width - 180, 10, 170, 30 + sortedPlayers.length * 20);
   
   context.fillStyle = 'white';
-  context.font = '16px Arial';
-  context.fillText('Leaderboard', canvas.width - 145, 30);
+  context.font = '16px sans-serif';
+  context.fillText('Leaderboard', canvas.width - 155, 30);
 
   sortedPlayers.forEach((player, index) => {
-    const name = player.id === selfId ? 'You' : player.id.substring(0, 5);
     context.fillStyle = player.color;
     context.fillText(
-      `${index + 1}. ${name}: ${player.score}`,
-      canvas.width - 145,
+      `${index + 1}. ${player.username}: ${player.score}`,
+      canvas.width - 170,
       55 + index * 20
     );
   });
@@ -152,25 +166,14 @@ function drawLeaderboard() {
 
 // --- VÒNG LẶP GAME CHÍNH (CLIENT-SIDE) ---
 function gameLoop() {
-  // Gửi input lên server
   const self = players[selfId];
-  if (self && self.health > 0) {
-    // Gửi di chuyển
-    socket.emit('playerMovement', {
-      up: keys.w, down: keys.s, left: keys.a, right: keys.d
-    });
-
-    // Gửi hướng súng
-    const angle = Math.atan2(mouse.y - (self.y + self.height / 2), mouse.x - (self.x + self.width / 2));
-    socket.emit('playerAim', angle);
+  if (self) {
+    // Tính toán góc
+    input.angle = Math.atan2(input.mouse.y - self.y, input.mouse.x - self.x);
+    // Gửi toàn bộ input lên server
+    socket.emit('playerInput', input);
   }
 
-  // Vẽ game
   draw();
-
-  // Lặp lại
   requestAnimationFrame(gameLoop);
 }
-
-// Bắt đầu game
-requestAnimationFrame(gameLoop);
