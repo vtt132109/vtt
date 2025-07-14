@@ -11,6 +11,10 @@ export class Input {
     }
 
     startListening() {
+         window.addEventListener('keydown', (e) => {
+            if (this.state.keys.hasOwnProperty(e.key)) this.state.keys[e.key] = true;
+            if (e.key === 'g') this.network.sendThrowGrenade(); // Ném lựu đạn
+        });
         window.addEventListener('keydown', (e) => {
             if (this.state.keys.hasOwnProperty(e.key)) this.state.keys[e.key] = true;
         });
