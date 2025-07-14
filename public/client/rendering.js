@@ -16,7 +16,7 @@ export class Renderer {
         this.context.save();
         this.context.translate(-this.camera.x, -this.camera.y);
 
-        this.context.fillStyle = '#000';
+        this.context.fillStyle = '#EAEAEA';
         this.context.fillRect(this.camera.x, this.camera.y, this.canvas.width, this.canvas.height);
 
         this.drawWalls(walls);
@@ -34,7 +34,7 @@ export class Renderer {
     }
 
     drawWalls(walls) {
-        this.context.fillStyle = '#555';
+        this.context.fillStyle = '#000000';
         for (const wall of walls) {
             this.context.fillRect(wall.x, wall.y, wall.width, wall.height);
         }
@@ -55,6 +55,8 @@ export class Renderer {
     drawPlayers(players) {
         for (const id in players) {
             const player = players[id];
+            if (player.health <= 0) continue;
+
             this.context.save();
             this.context.translate(player.renderX, player.renderY);
             this.context.rotate(player.angle);
@@ -67,7 +69,7 @@ export class Renderer {
             this.context.fillStyle = player.color;
             this.context.fill();
 
-            this.context.fillStyle = 'white';
+            this.context.fillStyle = 'black';
             this.context.font = '12px sans-serif';
             this.context.textAlign = 'center';
             this.context.fillText(player.username, player.renderX, player.renderY - player.radius - 15);
@@ -77,6 +79,12 @@ export class Renderer {
     drawBullets(bullets) {
         for (const id in bullets) {
             const bullet = bullets[id];
+            if (bullet.isHoming) {
+                this.context.fillStyle = 'rgba(255, 0, 255, 0.5)';
+                this.context.beginPath();
+                this.context.arc(bullet.x, bullet.y, bullet.radius + 5, 0, Math.PI * 2);
+                this.context.fill();
+            }
             this.context.fillStyle = bullet.color;
             this.context.beginPath();
             this.context.arc(bullet.x, bullet.y, bullet.radius, 0, Math.PI * 2);
@@ -85,10 +93,17 @@ export class Renderer {
     }
 
     drawUI(player) {
-        this.context.fillStyle = 'white';
+        this.context.fillStyle = 'black';
         this.context.font = '20px sans-serif';
         this.context.textAlign = 'left';
         this.context.fillText(`Weapon: ${player.weapon}`, 10, 30);
         this.context.fillText(`Health: ${player.health}`, 10, 60);
+        this.context.fillText(`Score: ${player.score}`, 10, 90);
+
+        if (player.homingShotsActive) {
+            const remainingTime = Math.max(0, (player.homingShotsEndTime - Date.now()) / 1000).toFixed(1);
+            this.context.fillStyle = 'magenta';
+            this.context.fillText(`Homing: ${remainingTime}s`, 10, 120);
+        }
     }
 }
