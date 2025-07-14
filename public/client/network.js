@@ -10,6 +10,9 @@ export class Network {
         this.socket.on('gameState', (state) => this.game.updateState(state));
         this.socket.on('newPlayer', (player) => this.game.addPlayer(player));
         this.socket.on('playerDisconnected', (id) => this.game.removePlayer(id));
+        // public/client/network.js -> trong hàm connect()
+this.socket.on('itemPickedUp', (id) => this.game.updateItem(id, false));
+this.socket.on('newItem', (item) => this.game.addItem(item));
     }
 
     joinGame(username) { this.socket.emit('joinGame', username); }
