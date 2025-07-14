@@ -52,9 +52,12 @@ export class Game {
     interpolateEntities() {
         for (const id in this.state.players) {
             const player = this.state.players[id];
-            if (player.renderX) {
+            if (player.renderX !== undefined) {
                 player.renderX += (player.x - player.renderX) * this.INTERPOLATION_FACTOR;
                 player.renderY += (player.y - player.renderY) * this.INTERPOLATION_FACTOR;
+            } else {
+                player.renderX = player.x;
+                player.renderY = player.y;
             }
         }
     }
@@ -75,12 +78,20 @@ export class Game {
     updateState(state) {
         for (const id in state.players) {
             if (this.state.players[id]) {
-                Object.assign(this.state.players[id], state.players[id]);
+                // Giữ lại renderX, renderY và các thuộc tính client-side khác
+                const clientPlayer = this.state.players[id];
+                Object.assign(clientPlayer, state.players[id]);
             } else {
                 const player = state.players[id];
                 player.renderX = player.x;
                 player.renderY = player.y;
                 this.state.players[id] = player;
+            }
+        }
+        // Xóa người chơi đã thoát
+        for (const id in this.state.players) {
+            if (!state.players[id]) {
+                delete this.state.players[id];
             }
         }
         this.state.bullets = state.bullets;
