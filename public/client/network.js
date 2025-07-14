@@ -10,6 +10,8 @@ export class Network {
         this.socket.on('gameState', (state) => this.game.updateState(state));
         this.socket.on('newPlayer', (player) => this.game.addPlayer(player));
         this.socket.on('playerDisconnected', (id) => this.game.removePlayer(id));
+        this.socket.on('itemPickedUp', (id) => this.game.updateItem(id, false));
+        this.socket.on('newItem', (item) => this.game.addItem(item));
         this.socket.on('playerDied', (data) => this.game.onPlayerDied(data));
         this.socket.on('explosion', (pos) => this.game.onExplosion(pos));
         this.socket.on('bulletImpact', (pos) => this.game.onBulletImpact(pos));
