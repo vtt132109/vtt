@@ -99,6 +99,7 @@ export class Game {
         this.state.selfId = this.network.socket.id;
         this.state.walls = state.walls;
         this.state.jumpPads = state.jumpPads;
+        this.state.items = state.items || {};
         for (const id in state.players) {
             const player = state.players[id];
             player.renderX = player.x;
@@ -136,6 +137,14 @@ export class Game {
 
     removePlayer(id) {
         delete this.state.players[id];
+    }
+
+    updateItem(id, isActive) {
+        if (this.state.items[id]) this.state.items[id].active = isActive;
+    }
+
+    addItem(item) {
+        if (item) this.state.items[item.id] = item;
     }
 
     onPlayerDied(data) {
