@@ -17,7 +17,7 @@ io.on('connection', (socket) => {
     socket.on('joinGame', (username) => game.addPlayer(socket, username));
     socket.on('disconnect', () => game.removePlayer(socket));
     socket.on('playerInput', (input) => game.handlePlayerInput(socket.id, input));
-    socket.on('throwGrenade', () => game.handleThrowGrenade(socket.id)); // MỚI
+    socket.on('throwGrenade', () => game.handleThrowGrenade(socket.id));
 });
 
 setInterval(() => {
