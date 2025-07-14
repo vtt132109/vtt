@@ -15,7 +15,6 @@ function createPlayer(id, username) {
         weapon: 'pistol',
         lastShotTime: 0,
         score: 0,
-        // MỚI
         isDead: false,
         respawnTime: 0,
         grenades: 2,
