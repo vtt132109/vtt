@@ -13,6 +13,9 @@ export class Network {
         // public/client/network.js -> trong hàm connect()
 this.socket.on('itemPickedUp', (id) => this.game.updateItem(id, false));
 this.socket.on('newItem', (item) => this.game.addItem(item));
+         this.socket.on('playerDied', (data) => this.game.onPlayerDied(data));
+        this.socket.on('explosion', (pos) => this.game.onExplosion(pos));
+        this.socket.on('bulletImpact', (pos) => this.game.onBulletImpact(pos));
     }
 
     joinGame(username) { this.socket.emit('joinGame', username); }
