@@ -15,20 +15,16 @@ const game = new Game(io);
 io.on('connection', (socket) => {
     socket.on('joinGame', (username) => game.addPlayer(socket, username));
     socket.on('disconnect', () => game.removePlayer(socket));
-    // THAY ĐỔI: Nhận input đã được nén
-    socket.on('i', (inputArray) => game.handlePlayerInput(socket.id, inputArray));
+    socket.on('playerInput', (input) => game.handlePlayerInput(socket.id, input));
+    socket.on('throwGrenade', () => game.handleThrowGrenade(socket.id));
 });
 
-// Tách biệt vòng lặp logic và vòng lặp gửi gói tin
 setInterval(() => {
     game.update();
-}, 1000 / 60); // Logic chạy ở 60Hz
-
-setInterval(() => {
     if (Object.keys(game.players).length > 0) {
-        io.emit('s', game.getState()); // 's' for state
+        io.emit('gameState', game.getState());
     }
-}, 1000 / 30); // Gửi state ở 30Hz để tiết kiệm băng thông
+}, 1000 / 60);
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
