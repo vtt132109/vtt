@@ -40,6 +40,9 @@ export class Game {
                 this.input.state.mouse.y - this.canvas.height / 2,
                 this.input.state.mouse.x - this.canvas.width / 2
             );
+             if (this.input.getState().mouse.down) {
+            console.log("Sending shoot input to server. Mouse is down.");
+        }
             this.network.sendInput(this.input.getState());
         }
         
