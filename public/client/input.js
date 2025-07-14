@@ -1,7 +1,8 @@
 // public/client/input.js
 export class Input {
-    constructor(canvas) {
+    constructor(canvas, network) {
         this.canvas = canvas;
+        this.network = network;
         this.state = {
             keys: { w: false, a: false, s: false, d: false },
             isShooting: false,
@@ -11,12 +12,9 @@ export class Input {
     }
 
     startListening() {
-         window.addEventListener('keydown', (e) => {
-            if (this.state.keys.hasOwnProperty(e.key)) this.state.keys[e.key] = true;
-            if (e.key === 'g') this.network.sendThrowGrenade(); // Ném lựu đạn
-        });
         window.addEventListener('keydown', (e) => {
             if (this.state.keys.hasOwnProperty(e.key)) this.state.keys[e.key] = true;
+            if (e.key === 'g') this.network.sendThrowGrenade();
         });
         window.addEventListener('keyup', (e) => {
             if (this.state.keys.hasOwnProperty(e.key)) this.state.keys[e.key] = false;
