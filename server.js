@@ -7,87 +7,144 @@ const server = http.createServer(app);
 const { Server } = require("socket.io");
 const io = new Server(server);
 
-// Phục vụ các file tĩnh từ thư mục 'public'
 app.use(express.static('public'));
 
 // --- CÁC HẰNG SỐ CỦA GAME ---
 const PLAYER_HEALTH = 100;
-const PLAYER_SPEED = 4;
-const PLAYER_SIZE = 30;
-const BULLET_SPEED = 10;
-const BULLET_DAMAGE = 10;
+const PLAYER_RADIUS = 15;
+const PLAYER_SPEED = 3;
 const HEALTH_PACK_AMOUNT = 50;
+const SPEED_BOOST_AMOUNT = 1.5;
+const SPEED_BOOST_DURATION = 5000; // 5 giây
+
+// Định nghĩa các loại vũ khí
+const WEAPONS = {
+  pistol: {
+    name: 'Pistol',
+    damage: 10,
+    speed: 12,
+    fireRate: 400, // ms per shot
+    spread: 0.1, // radian
+    bulletCount: 1,
+  },
+  shotgun: {
+    name: 'Shotgun',
+    damage: 15,
+    speed: 10,
+    fireRate: 1000,
+    spread: 0.5,
+    bulletCount: 6,
+  },
+  machinegun: {
+    name: 'Machine Gun',
+    damage: 5,
+    speed: 15,
+    fireRate: 100,
+    spread: 0.2,
+    bulletCount: 1,
+  }
+};
 
 // --- TRẠNG THÁI GAME ---
 const players = {};
 const bullets = {};
-const items = {
-  'healthPack1': {
-    x: 100, y: 100, width: 20, height: 20, type: 'health', active: true
-  },
-  'healthPack2': {
-    x: 700, y: 500, width: 20, height: 20, type: 'health', active: true
-  }
-};
+const items = {};
 const walls = [
   { x: 200, y: 150, width: 20, height: 300 },
   { x: 600, y: 150, width: 20, height: 300 },
   { x: 300, y: 400, width: 200, height: 20 }
 ];
 let bulletIdCounter = 0;
+let itemIdCounter = 0;
 
 // --- HÀM HỖ TRỢ ---
-function isColliding(rect1, rect2) {
-  return rect1.x < rect2.x + rect2.width &&
-         rect1.x + rect1.width > rect2.x &&
-         rect1.y < rect2.y + rect2.height &&
-         rect1.y + rect1.height > rect2.y;
+function isCollidingRectCircle(rect, circle) {
+  const distX = Math.abs(circle.x - rect.x - rect.width / 2);
+  const distY = Math.abs(circle.y - rect.y - rect.height / 2);
+  if (distX > (rect.width / 2 + circle.radius)) { return false; }
+  if (distY > (rect.height / 2 + circle.radius)) { return false; }
+  if (distX <= (rect.width / 2)) { return true; }
+  if (distY <= (rect.height / 2)) { return true; }
+  const dx = distX - rect.width / 2;
+  const dy = distY - rect.height / 2;
+  return (dx * dx + dy * dy <= (circle.radius * circle.radius));
+}
+
+function isCollidingCircleCircle(circle1, circle2) {
+    const dx = circle1.x - circle2.x;
+    const dy = circle1.y - circle2.y;
+    const distance = Math.sqrt(dx * dx + dy * dy);
+    return distance < circle1.radius + circle2.radius;
+}
+
+function spawnItem() {
+    const id = `item-${itemIdCounter++}`;
+    const typeRoll = Math.random();
+    let type, color;
+    if (typeRoll < 0.2) { type = 'health'; color = 'lime'; }
+    else if (typeRoll < 0.4) { type = 'speed'; color = 'yellow'; }
+    else if (typeRoll < 0.7) { type = 'shotgun'; color = 'orange'; }
+    else { type = 'machinegun'; color = 'cyan'; }
+
+    items[id] = {
+        id,
+        x: Math.floor(Math.random() * 750) + 25,
+        y: Math.floor(Math.random() * 550) + 25,
+        radius: 10,
+        type,
+        color,
+        active: true
+    };
+}
+// Tạo 5 item ban đầu
+for (let i = 0; i < 5; i++) {
+    spawnItem();
 }
 
 // --- LOGIC KẾT NỐI ---
 io.on('connection', (socket) => {
-  console.log(`Một người chơi đã kết nối: ${socket.id}`);
-
-  // Tạo người chơi mới
-  players[socket.id] = {
-    x: Math.floor(Math.random() * 700) + 50,
-    y: Math.floor(Math.random() * 500) + 50,
-    width: PLAYER_SIZE,
-    height: PLAYER_SIZE,
-    color: `hsl(${Math.random() * 360}, 100%, 50%)`,
-    id: socket.id,
-    health: PLAYER_HEALTH,
-    score: 0,
-    angle: 0 // Góc của súng
-  };
-
-  // Gửi trạng thái ban đầu cho client mới
-  socket.emit('initialState', { players, walls, items });
-
-  // Thông báo cho các client khác về người chơi mới
-  socket.broadcast.emit('newPlayer', players[socket.id]);
-
-  // Xử lý khi client ngắt kết nối
-  socket.on('disconnect', () => {
-    console.log(`Người chơi đã ngắt kết nối: ${socket.id}`);
-    delete players[socket.id];
-    io.emit('playerDisconnected', socket.id);
+  socket.on('joinGame', (data) => {
+    console.log(`${data.username} (${socket.id}) đã tham gia.`);
+    players[socket.id] = {
+      x: Math.floor(Math.random() * 700) + 50,
+      y: Math.floor(Math.random() * 500) + 50,
+      radius: PLAYER_RADIUS,
+      color: `hsl(${Math.random() * 360}, 100%, 50%)`,
+      id: socket.id,
+      username: data.username,
+      health: PLAYER_HEALTH,
+      score: 0,
+      angle: 0,
+      speed: PLAYER_SPEED,
+      weapon: 'pistol',
+      lastShotTime: 0,
+    };
+    socket.emit('initialState', { players, walls, items });
+    socket.broadcast.emit('newPlayer', players[socket.id]);
   });
 
-  // Xử lý di chuyển
-  socket.on('playerMovement', (movementData) => {
-    const player = players[socket.id];
-    if (!player) return;
+  socket.on('disconnect', () => {
+    if (players[socket.id]) {
+      console.log(`${players[socket.id].username} đã ngắt kết nối.`);
+      delete players[socket.id];
+      io.emit('playerDisconnected', socket.id);
+    }
+  });
 
-    const potentialPosition = { ...player, x: player.x, y: player.y };
-    if (movementData.left) potentialPosition.x -= PLAYER_SPEED;
-    if (movementData.right) potentialPosition.x += PLAYER_SPEED;
-    if (movementData.up) potentialPosition.y -= PLAYER_SPEED;
-    if (movementData.down) potentialPosition.y += PLAYER_SPEED;
+  socket.on('playerInput', (input) => {
+    const player = players[socket.id];
+    if (!player || player.health <= 0) return;
+
+    // Di chuyển
+    const potentialPosition = { x: player.x, y: player.y, radius: player.radius };
+    if (input.keys.a) potentialPosition.x -= player.speed;
+    if (input.keys.d) potentialPosition.x += player.speed;
+    if (input.keys.w) potentialPosition.y -= player.speed;
+    if (input.keys.s) potentialPosition.y += player.speed;
 
     let collision = false;
     for (const wall of walls) {
-      if (isColliding(potentialPosition, wall)) {
+      if (isCollidingRectCircle(wall, potentialPosition)) {
         collision = true;
         break;
       }
@@ -96,47 +153,45 @@ io.on('connection', (socket) => {
       player.x = potentialPosition.x;
       player.y = potentialPosition.y;
     }
-  });
 
-  // Xử lý hướng súng
-  socket.on('playerAim', (angle) => {
-    const player = players[socket.id];
-    if (player) {
-      player.angle = angle;
+    // Hướng
+    player.angle = input.angle;
+
+    // Bắn
+    const weapon = WEAPONS[player.weapon];
+    if (input.mouseDown && Date.now() - player.lastShotTime > weapon.fireRate) {
+      player.lastShotTime = Date.now();
+      for (let i = 0; i < weapon.bulletCount; i++) {
+        const angle = player.angle + (Math.random() - 0.5) * weapon.spread;
+        const bulletId = `bullet-${bulletIdCounter++}`;
+        bullets[bulletId] = {
+          id: bulletId,
+          ownerId: player.id,
+          x: player.x + Math.cos(angle) * (player.radius + 5),
+          y: player.y + Math.sin(angle) * (player.radius + 5),
+          velocityX: Math.cos(angle) * weapon.speed,
+          velocityY: Math.sin(angle) * weapon.speed,
+          damage: weapon.damage,
+          color: player.color,
+          radius: 5,
+        };
+      }
     }
-  });
-
-  // Xử lý bắn
-  socket.on('shoot', () => {
-    const player = players[socket.id];
-    if (!player || player.health <= 0) return;
-
-    const bulletId = bulletIdCounter++;
-    bullets[bulletId] = {
-      id: bulletId,
-      ownerId: player.id,
-      x: player.x + PLAYER_SIZE / 2 + Math.cos(player.angle) * (PLAYER_SIZE / 2),
-      y: player.y + PLAYER_SIZE / 2 + Math.sin(player.angle) * (PLAYER_SIZE / 2),
-      velocityX: Math.cos(player.angle) * BULLET_SPEED,
-      velocityY: Math.sin(player.angle) * BULLET_SPEED,
-      color: player.color
-    };
   });
 });
 
 // --- VÒNG LẶP GAME CHÍNH (SERVER-SIDE) ---
 setInterval(() => {
-  // Cập nhật đạn và kiểm tra va chạm
+  // Cập nhật đạn và va chạm
   for (const id in bullets) {
     const bullet = bullets[id];
     bullet.x += bullet.velocityX;
     bullet.y += bullet.velocityY;
 
     let bulletRemoved = false;
-
     // Va chạm đạn với tường
     for (const wall of walls) {
-      if (isColliding({ ...bullet, width: 5, height: 5 }, wall)) {
+      if (isCollidingRectCircle(wall, bullet)) {
         delete bullets[id];
         bulletRemoved = true;
         break;
@@ -147,61 +202,59 @@ setInterval(() => {
     // Va chạm đạn với người chơi
     for (const playerId in players) {
       const player = players[playerId];
-      if (bullet.ownerId !== playerId && player.health > 0 && isColliding({ ...bullet, width: 5, height: 5 }, player)) {
-        player.health -= BULLET_DAMAGE;
+      if (bullet.ownerId !== playerId && player.health > 0 && isCollidingCircleCircle(bullet, player)) {
+        player.health -= bullet.damage;
         delete bullets[id];
         bulletRemoved = true;
-
-        // Xử lý khi người chơi bị hạ
         if (player.health <= 0) {
           player.health = 0;
           const killer = players[bullet.ownerId];
-          if (killer) {
-            killer.score += 1;
-          }
-          // Hồi sinh người chơi sau 3 giây
+          if (killer) killer.score += 1;
           setTimeout(() => {
             player.x = Math.floor(Math.random() * 700) + 50;
             player.y = Math.floor(Math.random() * 500) + 50;
             player.health = PLAYER_HEALTH;
+            player.weapon = 'pistol';
+            player.speed = PLAYER_SPEED;
           }, 3000);
         }
         break;
       }
     }
     if (bulletRemoved) continue;
-
-    // Xóa đạn nếu ra khỏi màn hình
-    if (bullet.x < 0 || bullet.x > 800 || bullet.y < 0 || bullet.y > 600) {
+    if (bullet.x < -50 || bullet.x > 850 || bullet.y < -50 || bullet.y > 650) {
       delete bullets[id];
     }
   }
 
-  // Kiểm tra va chạm người chơi với item
+  // Va chạm người chơi với item
   for (const playerId in players) {
     const player = players[playerId];
+    if (player.health <= 0) continue;
     for (const itemId in items) {
       const item = items[itemId];
-      if (item.active && player.health > 0 && isColliding(player, item)) {
+      if (item.active && isCollidingCircleCircle(player, item)) {
         if (item.type === 'health') {
           player.health = Math.min(PLAYER_HEALTH, player.health + HEALTH_PACK_AMOUNT);
+        } else if (item.type === 'speed') {
+          player.speed *= SPEED_BOOST_AMOUNT;
+          setTimeout(() => { player.speed = PLAYER_SPEED; }, SPEED_BOOST_DURATION);
+        } else if (item.type === 'shotgun' || item.type === 'machinegun') {
+          player.weapon = item.type;
         }
         item.active = false;
-        io.emit('itemPickedUp', itemId); // Thông báo cho client để ẩn item
-        // Hồi sinh item sau 15 giây
+        io.emit('itemPickedUp', itemId);
         setTimeout(() => {
-          item.active = true;
-          io.emit('itemRespawned', itemId); // Thông báo cho client để hiện lại
-        }, 15000);
+          delete items[itemId];
+          spawnItem();
+          io.emit('newItem', Object.values(items).find(i => !i.active)); // Gửi item mới nhất
+        }, 10000); // Hồi sinh item mới sau 10 giây
       }
     }
   }
 
-  // Gửi trạng thái game mới nhất cho tất cả client
   io.emit('gameState', { players, bullets });
-
 }, 1000 / 60);
-
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
