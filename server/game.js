@@ -28,6 +28,7 @@ class Game {
         this.players = {};
         this.bullets = {};
         this.grenades = {};
+        this.items = {};
         this.walls = this.createMazeWalls(CONSTANTS.MAP_WIDTH, CONSTANTS.MAP_HEIGHT, 16, 12, 20);
         this.jumpPads = [
             { x: 200, y: 200, width: 50, height: 50, force: { x: 0, y: -CONSTANTS.JUMP_PAD_POWER } },
@@ -35,6 +36,12 @@ class Game {
         ];
         this.bulletIdCounter = 0;
         this.grenadeIdCounter = 0;
+        this.itemIdCounter = 0;
+        this.init();
+    }
+
+    init() {
+        for (let i = 0; i < 10; i++) this.spawnItem();
     }
 
     addPlayer(socket, username) {
@@ -44,6 +51,7 @@ class Game {
             players: this.players,
             walls: this.walls,
             jumpPads: this.jumpPads,
+            items: this.items,
         });
         socket.broadcast.emit('newPlayer', newPlayer);
     }
@@ -248,6 +256,27 @@ class Game {
                 }
             }
         }
+        
+        for (const playerId in this.players) {
+            const player = this.players[playerId];
+            if (player.health <= 0) continue;
+            for (const itemId in this.items) {
+                const item = this.items[itemId];
+                if (item.active && isCollidingCircleCircle(player, item)) {
+                    if (item.type === 'health') {
+                        player.health = Math.min(CONSTANTS.PLAYER_HEALTH, player.health + CONSTANTS.HEALTH_PACK_AMOUNT);
+                    } else if (item.type === 'shotgun' || item.type === 'machinegun') {
+                        player.weapon = item.type;
+                    }
+                    item.active = false;
+                    this.io.emit('itemPickedUp', itemId);
+                    setTimeout(() => {
+                        delete this.items[itemId];
+                        this.spawnItem();
+                    }, 15000);
+                }
+            }
+        }
     }
 
     getState() {
@@ -258,6 +287,27 @@ class Game {
         };
     }
     
+    spawnItem() {
+        const id = `item-${this.itemIdCounter++}`;
+        const typeRoll = Math.random();
+        let type, color;
+        if (typeRoll < 0.5) { type = 'health'; color = 'lime'; }
+        else if (typeRoll < 0.75) { type = 'shotgun'; color = 'orange'; }
+        else { type = 'machinegun'; color = 'cyan'; }
+
+        const newItem = {
+            id,
+            x: Math.floor(Math.random() * (CONSTANTS.MAP_WIDTH - 100)) + 50,
+            y: Math.floor(Math.random() * (CONSTANTS.MAP_HEIGHT - 100)) + 50,
+            radius: 10,
+            type,
+            color,
+            active: true
+        };
+        this.items[id] = newItem;
+        this.io.emit('newItem', newItem);
+    }
+
     createMazeWalls(mapWidth, mapHeight, cols, rows, wallThickness) {
         const mazeWalls = [];
         mazeWalls.push({ x: 0, y: 0, width: mapWidth, height: wallThickness });
