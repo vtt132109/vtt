@@ -15,7 +15,6 @@ function createPlayer(id, username) {
         weapon: 'pistol',
         lastShotTime: 0,
         score: 0,
-        // MỚI: Trạng thái cho đạn tầm nhiệt
         homingShotsActive: false,
         homingShotsEndTime: 0,
     };
