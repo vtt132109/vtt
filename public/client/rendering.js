@@ -7,7 +7,7 @@ export class Renderer {
     }
 
     draw(state) {
-        const { players, bullets, walls, items, selfId } = state;
+        const { players, bullets, walls, jumpPads, grenades, particles, selfId } = state;
         const self = players[selfId];
         if (!self) return;
 
@@ -19,10 +19,12 @@ export class Renderer {
         this.context.fillStyle = '#EAEAEA';
         this.context.fillRect(this.camera.x, this.camera.y, this.canvas.width, this.canvas.height);
 
+        this.drawJumpPads(jumpPads);
         this.drawWalls(walls);
-        this.drawItems(items);
+        this.drawGrenades(grenades);
         this.drawPlayers(players);
         this.drawBullets(bullets);
+        this.drawParticles(particles);
 
         this.context.restore();
         this.drawUI(self);
@@ -40,22 +42,27 @@ export class Renderer {
         }
     }
 
-    drawItems(items) {
-        for (const id in items) {
-            const item = items[id];
-            if (item.active) {
-                this.context.fillStyle = item.color;
-                this.context.beginPath();
-                this.context.arc(item.x, item.y, item.radius, 0, Math.PI * 2);
-                this.context.fill();
-            }
+    drawJumpPads(jumpPads) {
+        this.context.fillStyle = 'rgba(0, 255, 255, 0.5)';
+        for (const pad of jumpPads) {
+            this.context.fillRect(pad.x, pad.y, pad.width, pad.height);
+        }
+    }
+
+    drawGrenades(grenades) {
+        this.context.fillStyle = '#333333';
+        for (const id in grenades) {
+            const g = grenades[id];
+            this.context.beginPath();
+            this.context.arc(g.x, g.y, g.radius, 0, Math.PI * 2);
+            this.context.fill();
         }
     }
 
     drawPlayers(players) {
         for (const id in players) {
             const player = players[id];
-            if (player.health <= 0) continue;
+            if (player.isDead) continue;
 
             this.context.save();
             this.context.translate(player.renderX, player.renderY);
@@ -72,22 +79,34 @@ export class Renderer {
             this.context.fillStyle = 'black';
             this.context.font = '12px sans-serif';
             this.context.textAlign = 'center';
-            this.context.fillText(player.username, player.renderX, player.renderY - player.radius - 15);
+            this.context.fillText(player.username, player.renderX, player.renderY - player.radius - 28);
+
+            const barWidth = 40;
+            const barHeight = 5;
+            const x = player.renderX - barWidth / 2;
+            const y = player.renderY - player.radius - 20;
+            this.context.fillStyle = '#ff4d4d';
+            this.context.fillRect(x, y, barWidth, barHeight);
+            this.context.fillStyle = '#4dff4d';
+            this.context.fillRect(x, y, barWidth * (player.health / 100), barHeight);
         }
     }
 
     drawBullets(bullets) {
         for (const id in bullets) {
             const bullet = bullets[id];
-            if (bullet.isHoming) {
-                this.context.fillStyle = 'rgba(255, 0, 255, 0.5)';
-                this.context.beginPath();
-                this.context.arc(bullet.x, bullet.y, bullet.radius + 5, 0, Math.PI * 2);
-                this.context.fill();
-            }
             this.context.fillStyle = bullet.color;
             this.context.beginPath();
             this.context.arc(bullet.x, bullet.y, bullet.radius, 0, Math.PI * 2);
+            this.context.fill();
+        }
+    }
+
+    drawParticles(particles) {
+        for (const p of particles) {
+            this.context.fillStyle = p.color;
+            this.context.beginPath();
+            this.context.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
             this.context.fill();
         }
     }
@@ -99,11 +118,16 @@ export class Renderer {
         this.context.fillText(`Weapon: ${player.weapon}`, 10, 30);
         this.context.fillText(`Health: ${player.health}`, 10, 60);
         this.context.fillText(`Score: ${player.score}`, 10, 90);
+        this.context.fillText(`Grenades: ${player.grenades}`, 10, 120);
 
-        if (player.homingShotsActive) {
-            const remainingTime = Math.max(0, (player.homingShotsEndTime - Date.now()) / 1000).toFixed(1);
-            this.context.fillStyle = 'magenta';
-            this.context.fillText(`Homing: ${remainingTime}s`, 10, 120);
+        if (player.isDead) {
+            const remaining = ((player.respawnTime - Date.now()) / 1000).toFixed(1);
+            this.context.fillStyle = 'rgba(0,0,0,0.5)';
+            this.context.fillRect(0, 0, this.canvas.width, this.canvas.height);
+            this.context.fillStyle = 'white';
+            this.context.font = '40px sans-serif';
+            this.context.textAlign = 'center';
+            this.context.fillText(`Respawning in ${remaining}...`, this.canvas.width / 2, this.canvas.height / 2);
         }
     }
 }
