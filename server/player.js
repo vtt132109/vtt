@@ -15,8 +15,11 @@ function createPlayer(id, username) {
         weapon: 'pistol',
         lastShotTime: 0,
         score: 0,
-        homingShotsActive: false,
-        homingShotsEndTime: 0,
+        // MỚI
+        isDead: false,
+        respawnTime: 0,
+        grenades: 2,
+        lastGrenadeTime: 0,
     };
 }
 
