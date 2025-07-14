@@ -14,6 +14,10 @@ function createPlayer(id, username) {
         health: CONSTANTS.PLAYER_HEALTH,
         weapon: 'pistol',
         lastShotTime: 0,
+        score: 0,
+        // MỚI: Trạng thái cho đạn tầm nhiệt
+        homingShotsActive: false,
+        homingShotsEndTime: 0,
     };
 }
 
