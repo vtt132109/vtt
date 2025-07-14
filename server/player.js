@@ -17,8 +17,8 @@ function createPlayer(id, username) {
         score: 0,
         isDead: false,
         respawnTime: 0,
-        // MỚI: Dùng cho Client-Side Prediction
-        lastProcessedInput: 0,
+        grenades: 2,
+        lastGrenadeTime: 0,
     };
 }
 
