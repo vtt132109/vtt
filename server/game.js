@@ -3,8 +3,24 @@ const CONSTANTS = require('./constants');
 const WEAPONS = require('./weapon');
 const { createPlayer } = require('./player');
 
-function isCollidingRectCircle(rect, circle) { /* ... (giữ nguyên) */ }
-function isCollidingCircleCircle(circle1, circle2) { /* ... (giữ nguyên) */ }
+function isCollidingRectCircle(rect, circle) {
+    const distX = Math.abs(circle.x - rect.x - rect.width / 2);
+    const distY = Math.abs(circle.y - rect.y - rect.height / 2);
+    if (distX > (rect.width / 2 + circle.radius)) { return false; }
+    if (distY > (rect.height / 2 + circle.radius)) { return false; }
+    if (distX <= (rect.width / 2)) { return true; }
+    if (distY <= (rect.height / 2)) { return true; }
+    const dx = distX - rect.width / 2;
+    const dy = distY - rect.height / 2;
+    return (dx * dx + dy * dy <= (circle.radius * circle.radius));
+}
+
+function isCollidingCircleCircle(circle1, circle2) {
+    const dx = circle1.x - circle2.x;
+    const dy = circle1.y - circle2.y;
+    const distance = Math.sqrt(dx * dx + dy * dy);
+    return distance < circle1.radius + circle2.radius;
+}
 
 class Game {
     constructor(io) {
@@ -32,14 +48,61 @@ class Game {
         socket.broadcast.emit('newPlayer', newPlayer);
     }
 
-    removePlayer(socket) { /* ... (giữ nguyên) */ }
+    removePlayer(socket) {
+        if (this.players[socket.id]) {
+            delete this.players[socket.id];
+            this.io.emit('playerDisconnected', socket.id);
+        }
+    }
 
     handlePlayerInput(id, input) {
         const player = this.players[id];
         if (!player || player.isDead) return;
-        // ... (logic di chuyển và va chạm tường giữ nguyên)
+
+        const potentialPosition = { x: player.x, y: player.y, radius: player.radius };
+        if (input.keys.a) potentialPosition.x -= player.speed;
+        if (input.keys.d) potentialPosition.x += player.speed;
+        if (input.keys.w) potentialPosition.y -= player.speed;
+        if (input.keys.s) potentialPosition.y += player.speed;
+
+        potentialPosition.x = Math.max(player.radius, Math.min(CONSTANTS.MAP_WIDTH - player.radius, potentialPosition.x));
+        potentialPosition.y = Math.max(player.radius, Math.min(CONSTANTS.MAP_HEIGHT - player.radius, potentialPosition.y));
+
+        let collision = false;
+        for (const wall of this.walls) {
+            if (isCollidingRectCircle(wall, potentialPosition)) {
+                collision = true;
+                break;
+            }
+        }
+        if (!collision) {
+            player.x = potentialPosition.x;
+            player.y = potentialPosition.y;
+        }
+
         player.angle = input.angle;
-        // ... (logic bắn súng theo đợt giữ nguyên)
+
+        if (input.isShooting) {
+            const weapon = WEAPONS[player.weapon];
+            if (weapon && Date.now() - player.lastShotTime > weapon.fireRate) {
+                player.lastShotTime = Date.now();
+
+                if (weapon.burstCount > 1) {
+                    for (let i = 0; i < weapon.burstCount; i++) {
+                        setTimeout(() => {
+                            if (this.players[id] && !this.players[id].isDead) {
+                                this.createBullet(player, weapon);
+                            }
+                        }, i * weapon.burstDelay);
+                    }
+                } else {
+                    const bulletCount = weapon.bulletCount || 1;
+                    for (let i = 0; i < bulletCount; i++) {
+                        this.createBullet(player, weapon);
+                    }
+                }
+            }
+        }
     }
 
     handleThrowGrenade(id) {
@@ -64,6 +127,24 @@ class Game {
         setTimeout(() => {
             this.explodeGrenade(grenadeId);
         }, CONSTANTS.GRENADE_FUSE_TIME);
+    }
+
+    createBullet(player, weapon) {
+        const spread = weapon.spread || 0;
+        const angle = player.angle + (Math.random() - 0.5) * spread;
+        const bulletId = `bullet-${this.bulletIdCounter++}`;
+        
+        this.bullets[bulletId] = {
+            ownerId: player.id,
+            x: player.x + Math.cos(angle) * (player.radius + 5),
+            y: player.y + Math.sin(angle) * (player.radius + 5),
+            velocityX: Math.cos(angle) * weapon.speed,
+            velocityY: Math.sin(angle) * weapon.speed,
+            radius: 5,
+            color: player.color,
+            damage: weapon.damage,
+            ricochetsLeft: CONSTANTS.BULLET_MAX_RICOCHETS,
+        };
     }
 
     explodeGrenade(grenadeId) {
@@ -101,28 +182,24 @@ class Game {
     }
 
     update() {
-        // Cập nhật lựu đạn
         for (const id in this.grenades) {
             const grenade = this.grenades[id];
             grenade.x += grenade.velocityX;
             grenade.y += grenade.velocityY;
-            grenade.velocityX *= 0.98; // Ma sát
+            grenade.velocityX *= 0.98;
             grenade.velocityY *= 0.98;
         }
 
-        // Cập nhật đạn
         for (const id in this.bullets) {
             const bullet = this.bullets[id];
             bullet.x += bullet.velocityX;
             bullet.y += bullet.velocityY;
 
             let bulletRemoved = false;
-            // Va chạm tường (Ricochet)
             for (const wall of this.walls) {
                 if (isCollidingRectCircle(wall, bullet)) {
                     if (bullet.ricochetsLeft > 0) {
                         bullet.ricochetsLeft--;
-                        // Xác định va chạm ngang hay dọc để đảo ngược vận tốc
                         const overlapX = (bullet.x > wall.x && bullet.x < wall.x + wall.width);
                         const overlapY = (bullet.y > wall.y && bullet.y < wall.y + wall.height);
                         if (overlapX) bullet.velocityY *= -1;
@@ -137,7 +214,6 @@ class Game {
             }
             if (bulletRemoved) continue;
 
-            // Va chạm người chơi (bao gồm cả tự bắn)
             for (const playerId in this.players) {
                 const player = this.players[playerId];
                 if (!player.isDead && isCollidingCircleCircle(bullet, player)) {
@@ -149,13 +225,14 @@ class Game {
                 }
             }
             if (bulletRemoved) continue;
-            // ... (xóa đạn khi ra khỏi màn hình)
+
+            if (bullet.x < 0 || bullet.x > CONSTANTS.MAP_WIDTH || bullet.y < 0 || bullet.y > CONSTANTS.MAP_HEIGHT) {
+                delete this.bullets[id];
+            }
         }
 
-        // Cập nhật người chơi
         for (const id in this.players) {
             const player = this.players[id];
-            // Hồi sinh
             if (player.isDead && Date.now() > player.respawnTime) {
                 player.isDead = false;
                 player.health = CONSTANTS.PLAYER_HEALTH;
@@ -164,7 +241,6 @@ class Game {
                 player.weapon = 'pistol';
                 player.grenades = 2;
             }
-            // Bệ nhảy
             for (const pad of this.jumpPads) {
                 if (!player.isDead && isCollidingRectCircle(pad, player)) {
                     player.x += pad.force.x;
@@ -182,7 +258,25 @@ class Game {
         };
     }
     
-    // ... (createBullet, createMazeWalls, spawnItem giữ nguyên)
+    createMazeWalls(mapWidth, mapHeight, cols, rows, wallThickness) {
+        const mazeWalls = [];
+        mazeWalls.push({ x: 0, y: 0, width: mapWidth, height: wallThickness });
+        mazeWalls.push({ x: 0, y: mapHeight - wallThickness, width: mapWidth, height: wallThickness });
+        mazeWalls.push({ x: 0, y: 0, width: wallThickness, height: mapHeight });
+        mazeWalls.push({ x: mapWidth - wallThickness, y: 0, width: wallThickness, height: mapHeight });
+        const cellWidth = mapWidth / cols;
+        const cellHeight = mapHeight / rows;
+        for (let i = 0; i < 40; i++) {
+            const x = Math.floor(Math.random() * cols) * cellWidth;
+            const y = Math.floor(Math.random() * rows) * cellHeight;
+            if (Math.random() > 0.5) {
+                mazeWalls.push({ x, y, width: cellWidth * (Math.floor(Math.random() * 3) + 1), height: wallThickness });
+            } else {
+                mazeWalls.push({ x, y, width: wallThickness, height: cellHeight * (Math.floor(Math.random() * 2) + 1) });
+            }
+        }
+        return mazeWalls;
+    }
 }
 
 module.exports = Game;
