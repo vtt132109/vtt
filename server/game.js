@@ -28,18 +28,14 @@ class Game {
         this.players = {};
         this.bullets = {};
         this.items = {};
-        this.walls = [
-            { x: 300, y: 200, width: 50, height: 800 },
-            { x: 1250, y: 200, width: 50, height: 800 },
-            { x: 600, y: 575, width: 400, height: 50 }
-        ];
+        this.walls = this.createMazeWalls(CONSTANTS.MAP_WIDTH, CONSTANTS.MAP_HEIGHT, 16, 12, 20);
         this.bulletIdCounter = 0;
         this.itemIdCounter = 0;
         this.init();
     }
 
     init() {
-        for (let i = 0; i < 8; i++) this.spawnItem();
+        for (let i = 0; i < 10; i++) this.spawnItem();
     }
 
     addPlayer(socket, username) {
@@ -92,36 +88,108 @@ class Game {
             const weapon = WEAPONS[player.weapon];
             if (weapon && Date.now() - player.lastShotTime > weapon.fireRate) {
                 player.lastShotTime = Date.now();
-                const bulletCount = weapon.bulletCount || 1;
-                const spread = weapon.spread || 0;
-                for (let i = 0; i < bulletCount; i++) {
-                    const angle = player.angle + (Math.random() - 0.5) * spread;
-                    const bulletId = `bullet-${this.bulletIdCounter++}`;
-                    this.bullets[bulletId] = {
-                        ownerId: player.id,
-                        x: player.x + Math.cos(angle) * (player.radius + 5),
-                        y: player.y + Math.sin(angle) * (player.radius + 5),
-                        velocityX: Math.cos(angle) * weapon.speed,
-                        velocityY: Math.sin(angle) * weapon.speed,
-                        radius: 5,
-                        color: player.color,
-                    };
+
+                if (weapon.burstCount > 1) {
+                    for (let i = 0; i < weapon.burstCount; i++) {
+                        setTimeout(() => {
+                            if (this.players[id] && this.players[id].health > 0) {
+                                this.createBullet(player, weapon);
+                            }
+                        }, i * weapon.burstDelay);
+                    }
+                } else {
+                    const bulletCount = weapon.bulletCount || 1;
+                    for (let i = 0; i < bulletCount; i++) {
+                        this.createBullet(player, weapon);
+                    }
                 }
             }
         }
     }
 
+    createBullet(player, weapon) {
+        const spread = weapon.spread || 0;
+        const angle = player.angle + (Math.random() - 0.5) * spread;
+        const bulletId = `bullet-${this.bulletIdCounter++}`;
+        
+        this.bullets[bulletId] = {
+            ownerId: player.id,
+            x: player.x + Math.cos(angle) * (player.radius + 5),
+            y: player.y + Math.sin(angle) * (player.radius + 5),
+            velocityX: Math.cos(angle) * weapon.speed,
+            velocityY: Math.sin(angle) * weapon.speed,
+            radius: 5,
+            color: player.color,
+            damage: weapon.damage,
+            isHoming: player.homingShotsActive,
+        };
+    }
+
     update() {
         for (const id in this.bullets) {
             const bullet = this.bullets[id];
+            
+            if (bullet.isHoming) {
+                let closestPlayer = null;
+                let minDistance = Infinity;
+                for (const playerId in this.players) {
+                    if (playerId !== bullet.ownerId && this.players[playerId].health > 0) {
+                        const target = this.players[playerId];
+                        const dx = target.x - bullet.x;
+                        const dy = target.y - bullet.y;
+                        const distance = Math.sqrt(dx * dx + dy * dy);
+                        if (distance < minDistance) {
+                            minDistance = distance;
+                            closestPlayer = target;
+                        }
+                    }
+                }
+                if (closestPlayer) {
+                    const turnRate = 0.1;
+                    const targetAngle = Math.atan2(closestPlayer.y - bullet.y, closestPlayer.x - bullet.x);
+                    const currentAngle = Math.atan2(bullet.velocityY, bullet.velocityX);
+                    let angleDiff = targetAngle - currentAngle;
+                    while (angleDiff > Math.PI) angleDiff -= 2 * Math.PI;
+                    while (angleDiff < -Math.PI) angleDiff += 2 * Math.PI;
+                    const newAngle = currentAngle + Math.max(-turnRate, Math.min(turnRate, angleDiff));
+                    const speed = Math.sqrt(bullet.velocityX**2 + bullet.velocityY**2);
+                    bullet.velocityX = Math.cos(newAngle) * speed;
+                    bullet.velocityY = Math.sin(newAngle) * speed;
+                }
+            }
+
             bullet.x += bullet.velocityX;
             bullet.y += bullet.velocityY;
 
             let bulletRemoved = false;
             for (const wall of this.walls) {
-                if (isCollidingRectCircle(wall, { ...bullet, radius: bullet.radius })) {
+                if (isCollidingRectCircle(wall, bullet)) {
                     delete this.bullets[id];
                     bulletRemoved = true;
+                    break;
+                }
+            }
+            if (bulletRemoved) continue;
+
+            for (const playerId in this.players) {
+                const player = this.players[playerId];
+                if (bullet.ownerId !== playerId && player.health > 0 && isCollidingCircleCircle(bullet, player)) {
+                    player.health -= bullet.damage;
+                    delete this.bullets[id];
+                    bulletRemoved = true;
+                    if (player.health <= 0) {
+                        player.health = 0;
+                        const killer = this.players[bullet.ownerId];
+                        if (killer) killer.score = (killer.score || 0) + 1;
+                        setTimeout(() => {
+                            if (this.players[playerId]) {
+                                this.players[playerId].x = Math.floor(Math.random() * (CONSTANTS.MAP_WIDTH - 200)) + 100;
+                                this.players[playerId].y = Math.floor(Math.random() * (CONSTANTS.MAP_HEIGHT - 200)) + 100;
+                                this.players[playerId].health = CONSTANTS.PLAYER_HEALTH;
+                                this.players[playerId].weapon = 'pistol';
+                            }
+                        }, 3000);
+                    }
                     break;
                 }
             }
@@ -142,6 +210,9 @@ class Game {
                         player.health = Math.min(CONSTANTS.PLAYER_HEALTH, player.health + CONSTANTS.HEALTH_PACK_AMOUNT);
                     } else if (item.type === 'shotgun' || item.type === 'machinegun') {
                         player.weapon = item.type;
+                    } else if (item.type === 'homing') {
+                        player.homingShotsActive = true;
+                        player.homingShotsEndTime = Date.now() + CONSTANTS.HOMING_DURATION;
                     }
                     item.active = false;
                     this.io.emit('itemPickedUp', itemId);
@@ -150,6 +221,9 @@ class Game {
                         this.spawnItem();
                     }, 15000);
                 }
+            }
+            if (player.homingShotsActive && Date.now() > player.homingShotsEndTime) {
+                player.homingShotsActive = false;
             }
         }
     }
@@ -165,9 +239,10 @@ class Game {
         const id = `item-${this.itemIdCounter++}`;
         const typeRoll = Math.random();
         let type, color;
-        if (typeRoll < 0.5) { type = 'health'; color = 'lime'; }
-        else if (typeRoll < 0.75) { type = 'shotgun'; color = 'orange'; }
-        else { type = 'machinegun'; color = 'cyan'; }
+        if (typeRoll < 0.4) { type = 'health'; color = 'lime'; }
+        else if (typeRoll < 0.6) { type = 'shotgun'; color = 'orange'; }
+        else if (typeRoll < 0.8) { type = 'machinegun'; color = 'cyan'; }
+        else { type = 'homing'; color = 'magenta'; }
 
         const newItem = {
             id,
@@ -180,6 +255,30 @@ class Game {
         };
         this.items[id] = newItem;
         this.io.emit('newItem', newItem);
+    }
+
+    createMazeWalls(mapWidth, mapHeight, cols, rows, wallThickness) {
+        const mazeWalls = [];
+        const cellWidth = mapWidth / cols;
+        const cellHeight = mapHeight / rows;
+        
+        // Viền ngoài
+        mazeWalls.push({ x: 0, y: 0, width: mapWidth, height: wallThickness });
+        mazeWalls.push({ x: 0, y: mapHeight - wallThickness, width: mapWidth, height: wallThickness });
+        mazeWalls.push({ x: 0, y: 0, width: wallThickness, height: mapHeight });
+        mazeWalls.push({ x: mapWidth - wallThickness, y: 0, width: wallThickness, height: mapHeight });
+
+        // Tường bên trong (ví dụ)
+        for (let i = 0; i < 40; i++) {
+            const x = Math.floor(Math.random() * cols) * cellWidth;
+            const y = Math.floor(Math.random() * rows) * cellHeight;
+            if (Math.random() > 0.5) {
+                mazeWalls.push({ x, y, width: cellWidth * (Math.floor(Math.random() * 3) + 1), height: wallThickness });
+            } else {
+                mazeWalls.push({ x, y, width: wallThickness, height: cellHeight * (Math.floor(Math.random() * 2) + 1) });
+            }
+        }
+        return mazeWalls;
     }
 }
 
